@@ -142,8 +142,10 @@ class BaseScheduler(six.with_metaclass(ABCMeta)):
         if self.state != STATE_STOPPED:
             raise SchedulerAlreadyRunningError
 
+        # 检查 uwsgi 使用情况, 如果使用了 uwsgi, 一定要在选项中开启线程
         self._check_uwsgi()
 
+        # 添加 执行器, 任务存储
         with self._executors_lock:
             # Create a default executor if nothing else is configured
             if 'default' not in self._executors:
@@ -372,6 +374,7 @@ class BaseScheduler(six.with_metaclass(ABCMeta)):
                 if callback == cb:
                     del self._listeners[i]
 
+    # misfire_grace_time 默认是未定义的, None 表示可以无限延迟, int 表示允许延迟的秒数
     def add_job(self, func, trigger=None, args=None, kwargs=None, id=None, name=None,
                 misfire_grace_time=undefined, coalesce=undefined, max_instances=undefined,
                 next_run_time=undefined, jobstore='default', executor='default',
@@ -434,6 +437,7 @@ class BaseScheduler(six.with_metaclass(ABCMeta)):
             'max_instances': max_instances,
             'next_run_time': next_run_time
         }
+        # 只有有效的值才能被添加进去, 不能是 undefined
         job_kwargs = dict((key, value) for key, value in six.iteritems(job_kwargs) if
                           value is not undefined)
         job = Job(self, **job_kwargs)

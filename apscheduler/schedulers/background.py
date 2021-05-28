@@ -32,6 +32,7 @@ class BackgroundScheduler(BlockingScheduler):
         if self._event is None or self._event.is_set():
             self._event = Event()
 
+        # 创建一个线程运行阻塞的调度器, _main_loop 是继承自 BlockingScheduler, 是阻塞的
         BaseScheduler.start(self, *args, **kwargs)
         self._thread = Thread(target=self._main_loop, name='APScheduler')
         self._thread.daemon = self._daemon

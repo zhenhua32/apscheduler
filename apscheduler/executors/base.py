@@ -114,12 +114,14 @@ def run_job(job, jobstore_alias, run_times, logger_name):
         if job.misfire_grace_time is not None:
             difference = datetime.now(utc) - run_time
             grace_time = timedelta(seconds=job.misfire_grace_time)
+            # 检查下是否超过可以容忍的延迟时间了, 超出了就不能运行了, 直接跳过
             if difference > grace_time:
                 events.append(JobExecutionEvent(EVENT_JOB_MISSED, job.id, jobstore_alias,
                                                 run_time))
                 logger.warning('Run time of job "%s" was missed by %s', job, difference)
                 continue
 
+        # 调用要运行的函数
         logger.info('Running job "%s" (scheduled at %s)', job, run_time)
         try:
             retval = job.func(*job.args, **job.kwargs)
