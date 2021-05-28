@@ -146,6 +146,7 @@ class BaseScheduler(six.with_metaclass(ABCMeta)):
         self._check_uwsgi()
 
         # 添加 执行器, 任务存储
+        # 默认是线程池 和 内存存储
         with self._executors_lock:
             # Create a default executor if nothing else is configured
             if 'default' not in self._executors:

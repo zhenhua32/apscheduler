@@ -17,6 +17,8 @@ class BasePoolExecutor(BaseExecutor):
 
     def _do_submit_job(self, job, run_times):
         def callback(f):
+            # 添加成功或失败后的回调函数
+            # 获取 exception 和 traceback
             exc, tb = (f.exception_info() if hasattr(f, 'exception_info') else
                        (f.exception(), getattr(f.exception(), '__traceback__', None)))
             if exc:
@@ -24,6 +26,7 @@ class BasePoolExecutor(BaseExecutor):
             else:
                 self._run_job_success(job.id, f.result())
 
+        # 往池中提交函数, 如果池子坏掉了就重新建一个再提交一次
         try:
             f = self._pool.submit(run_job, job, job._jobstore_alias, run_times, self._logger.name)
         except BrokenProcessPool:
@@ -31,12 +34,14 @@ class BasePoolExecutor(BaseExecutor):
             self._pool = self._pool.__class__(self._pool._max_workers)
             f = self._pool.submit(run_job, job, job._jobstore_alias, run_times, self._logger.name)
 
+        # 添加完成后的回调函数
         f.add_done_callback(callback)
 
     def shutdown(self, wait=True):
         self._pool.shutdown(wait)
 
 
+# 线程池和进程池
 class ThreadPoolExecutor(BasePoolExecutor):
     """
     An executor that runs jobs in a concurrent.futures thread pool.
