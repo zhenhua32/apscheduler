@@ -57,6 +57,7 @@ class BaseJobStore(six.with_metaclass(ABCMeta)):
 
     def _fix_paused_jobs_sorting(self, jobs):
         for i, job in enumerate(jobs):
+            # 找到第一个 next_run_time 不为空的任务, 然后将它前面的任务都移动到最后面去
             if job.next_run_time is not None:
                 if i > 0:
                     paused_jobs = jobs[:i]

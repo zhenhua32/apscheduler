@@ -35,6 +35,11 @@ class RedisJobStore(BaseJobStore):
 
     def __init__(self, db=0, jobs_key='apscheduler.jobs', run_times_key='apscheduler.run_times',
                  pickle_protocol=pickle.HIGHEST_PROTOCOL, **connect_args):
+        """
+        用到了 redis 的两种结构
+        jobs_key 是 hash 结构
+        run_times_key 是 score set 结构
+        """
         super(RedisJobStore, self).__init__()
 
         if db is None:
@@ -54,6 +59,10 @@ class RedisJobStore(BaseJobStore):
         return self._reconstitute_job(job_state) if job_state else None
 
     def get_due_jobs(self, now):
+        """
+        获取时间在 now 之前的所有任务, 按运行时间升序排序
+        利用了 zrangebyscore 按时间戳排序, 并使用 hmget 一次性获取多个
+        """
         timestamp = datetime_to_utc_timestamp(now)
         job_ids = self.redis.zrangebyscore(self.run_times_key, 0, timestamp)
         if job_ids:
@@ -62,17 +71,28 @@ class RedisJobStore(BaseJobStore):
         return []
 
     def get_next_run_time(self):
+        """
+        获取下次运行时间
+        """
+        # 居然是直接取了第一个, 那就是说已经过时的任务不会出现在 run_times_key 中
         next_run_time = self.redis.zrange(self.run_times_key, 0, 0, withscores=True)
         if next_run_time:
             return utc_timestamp_to_datetime(next_run_time[0][1])
 
     def get_all_jobs(self):
+        """
+        获取所有任务
+        """
         job_states = self.redis.hgetall(self.jobs_key)
         jobs = self._reconstitute_jobs(six.iteritems(job_states))
+        # 暂停的任务放在最后面
         paused_sort_key = datetime(9999, 12, 31, tzinfo=utc)
         return sorted(jobs, key=lambda job: job.next_run_time or paused_sort_key)
 
     def add_job(self, job):
+        """
+        添加任务
+        """
         if self.redis.hexists(self.jobs_key, job.id):
             raise ConflictingIdError(job.id)
 
@@ -87,6 +107,9 @@ class RedisJobStore(BaseJobStore):
             pipe.execute()
 
     def update_job(self, job):
+        """
+        更新任务
+        """
         if not self.redis.hexists(self.jobs_key, job.id):
             raise JobLookupError(job.id)
 
@@ -102,6 +125,9 @@ class RedisJobStore(BaseJobStore):
             pipe.execute()
 
     def remove_job(self, job_id):
+        """
+        移除任务
+        """
         if not self.redis.hexists(self.jobs_key, job_id):
             raise JobLookupError(job_id)
 
@@ -111,15 +137,24 @@ class RedisJobStore(BaseJobStore):
             pipe.execute()
 
     def remove_all_jobs(self):
+        """
+        移除所有任务
+        """
         with self.redis.pipeline() as pipe:
             pipe.delete(self.jobs_key)
             pipe.delete(self.run_times_key)
             pipe.execute()
 
     def shutdown(self):
+        """
+        关闭时需要执行的动作
+        """
         self.redis.connection_pool.disconnect()
 
     def _reconstitute_job(self, job_state):
+        """
+        重新构建 job 实例
+        """
         job_state = pickle.loads(job_state)
         job = Job.__new__(Job)
         job.__setstate__(job_state)
@@ -128,6 +163,9 @@ class RedisJobStore(BaseJobStore):
         return job
 
     def _reconstitute_jobs(self, job_states):
+        """
+        批量还原的版本
+        """
         jobs = []
         failed_job_ids = []
         for job_id, job_state in job_states:
@@ -137,6 +175,7 @@ class RedisJobStore(BaseJobStore):
                 self._logger.exception('Unable to restore job "%s" -- removing it', job_id)
                 failed_job_ids.append(job_id)
 
+        # 对于还原失败的, 使用 redis 的流水线, 直接在一行命令中清除了, 同时删除了任务和它的计划运行时间
         # Remove all the jobs we failed to restore
         if failed_job_ids:
             with self.redis.pipeline() as pipe:
